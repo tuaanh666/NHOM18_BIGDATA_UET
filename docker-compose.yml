@@ -1,0 +1,230 @@
+# ============================================================================
+#  Movie Recommendation System — Lambda Architecture
+#  Toàn bộ hệ thống Big Data đóng gói trong Docker Compose
+# ============================================================================
+name: movielens-recsys
+
+services:
+  # ----------------------------------------------------------------------
+  #  INGESTION LAYER — Kafka + Zookeeper
+  # ----------------------------------------------------------------------
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks: [recsys-net]
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on: [zookeeper]
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    networks: [recsys-net]
+
+  # ----------------------------------------------------------------------
+  #  STORAGE / DATA LAKE — HDFS (NameNode + DataNode)
+  # ----------------------------------------------------------------------
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    ports:
+      - "9870:9870"   # Web UI
+      - "9000:9000"   # IPC
+    volumes:
+      - namenode_data:/hadoop/dfs/name
+    environment:
+      - CLUSTER_NAME=movielens
+    env_file: [./config/hadoop.env]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9870"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+    networks: [recsys-net]
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    depends_on: [namenode]
+    volumes:
+      - datanode_data:/hadoop/dfs/data
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    env_file: [./config/hadoop.env]
+    networks: [recsys-net]
+
+  # ----------------------------------------------------------------------
+  #  BATCH PROCESSING — Apache Spark (Master + Worker)
+  # ----------------------------------------------------------------------
+  spark-master:
+    image: bde2020/spark-master:3.3.0-hadoop3.3
+    container_name: spark-master
+    ports:
+      - "8080:8080"   # Spark Master Web UI
+      - "7077:7077"   # Spark Master
+    environment:
+      - INIT_DAEMON_STEP=setup_spark
+    env_file: [./config/hadoop.env]
+    networks: [recsys-net]
+
+  spark-worker:
+    image: bde2020/spark-worker:3.3.0-hadoop3.3
+    container_name: spark-worker
+    depends_on: [spark-master]
+    ports:
+      - "8081:8081"
+    environment:
+      - "SPARK_MASTER=spark://spark-master:7077"
+    env_file: [./config/hadoop.env]
+    networks: [recsys-net]
+
+  # ----------------------------------------------------------------------
+  #  REAL-TIME VIEW — HBase (standalone, có Thrift server cho happybase)
+  # ----------------------------------------------------------------------
+  hbase:
+    image: harisekhon/hbase:2.1
+    container_name: hbase
+    hostname: hbase
+    ports:
+      - "16010:16010" # HBase Master Web UI
+      - "9090:9090"   # Thrift server
+      - "2182:2181"
+    networks: [recsys-net]
+
+  # ----------------------------------------------------------------------
+  #  BATCH VIEW — MySQL (metadata phim + thống kê + gợi ý batch)
+  # ----------------------------------------------------------------------
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-movielens}
+      MYSQL_USER: ${MYSQL_USER:-mluser}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-mlpassword}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/mysql_init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD:-rootpassword}"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    networks: [recsys-net]
+
+  # ----------------------------------------------------------------------
+  #  ORCHESTRATION — Apache Airflow (standalone: webserver + scheduler)
+  # ----------------------------------------------------------------------
+  airflow:
+    image: apache/airflow:2.8.1-python3.11
+    container_name: airflow
+    depends_on: [mysql]
+    ports:
+      - "8088:8080"   # Airflow Web UI
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqldb://${MYSQL_USER:-mluser}:${MYSQL_PASSWORD:-mlpassword}@mysql:3306/${MYSQL_DATABASE:-movielens}
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+    command: standalone
+    networks: [recsys-net]
+
+  # ----------------------------------------------------------------------
+  #  INGESTION PRODUCER — giả lập luồng rating mới đẩy vào Kafka
+  # ----------------------------------------------------------------------
+  ingestion:
+    build: ./ingestion
+    container_name: ingestion
+    depends_on:
+      kafka:
+        condition: service_healthy
+    env_file: [./.env]
+    volumes:
+      - ./data:/app/data
+    networks: [recsys-net]
+    restart: on-failure
+
+  # ----------------------------------------------------------------------
+  #  REAL-TIME SOURCE (THẬT) — Wikimedia EventStreams -> Kafka
+  #  Phim đang được chỉnh sửa trên Wikipedia ngay lúc này = tín hiệu trending live
+  # ----------------------------------------------------------------------
+  wiki:
+    build: ./ingestion
+    container_name: wiki
+    depends_on:
+      kafka:
+        condition: service_healthy
+    env_file: [./.env]
+    environment:
+      MOVIES_PATH: /app/data/ml-25m/movies.csv
+      PYTHONUNBUFFERED: "1"
+    command: python wiki_stream_producer.py
+    volumes:
+      - ./data:/app/data
+    networks: [recsys-net]
+    restart: on-failure
+
+  # ----------------------------------------------------------------------
+  #  STREAM LAYER — Kafka consumer -> HBase real-time recommendations
+  # ----------------------------------------------------------------------
+  stream:
+    build: ./stream
+    container_name: stream
+    depends_on:
+      kafka:
+        condition: service_healthy
+    env_file: [./.env]
+    environment:
+      MOVIES_PATH: /app/data/ml-25m/movies.csv
+    volumes:
+      - ./data:/app/data
+    networks: [recsys-net]
+    restart: on-failure
+
+  # ----------------------------------------------------------------------
+  #  SERVING LAYER — Flask web demo
+  # ----------------------------------------------------------------------
+  serving:
+    build: ./serving
+    container_name: serving
+    depends_on: [mysql]
+    ports:
+      - "5000:5000"
+    env_file: [./.env]
+    networks: [recsys-net]
+    restart: on-failure
+
+volumes:
+  namenode_data:
+  datanode_data:
+  mysql_data:
+
+networks:
+  recsys-net:
+    driver: bridge

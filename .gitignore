@@ -1,0 +1,45 @@
+# Secrets — KHÔNG commit (chứa mật khẩu/khóa API). Dùng .env.example làm mẫu.
+.env
+.env.local
+
+# Data (large files - do not commit)
+data/
+*.zip
+*.csv
+!serving/static/**/*.csv
+
+# DB demo: giữ recsys.db (để chạy web ngay), bỏ bản backup nặng
+serving/recsys_full.db
+
+# Models / artifacts
+batch/models/
+batch/output/
+*.parquet
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Spark / Hadoop
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Airflow
+airflow/logs/
+airflow/*.db
+airflow/airflow.cfg
+
+# Docker volumes
+volumes/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
