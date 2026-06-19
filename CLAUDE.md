@@ -7,7 +7,6 @@
 - **Kiến trúc:** **Lambda Architecture** (Batch + Speed + Serving).
 - **Thuật toán cốt lõi:** **ALS** (Alternating Least Squares) — Collaborative Filtering, Spark MLlib.
 - **3 nguồn dữ liệu:** MovieLens 25M (lịch sử) · **Wikimedia EventStreams (real-time THẬT)** · TMDB (poster).
----
 
 ## 2. Stack công nghệ
 
@@ -24,7 +23,6 @@
 | Nguồn real-time | **Wikimedia EventStreams** | SSE công khai live, không key (= vai trò WebSocket Binance) |
 | Làm giàu | **TMDB API** | Poster phim thật qua `tmdbId` |
 
----
 
 ## 3. Cấu trúc thư mục
 
@@ -59,11 +57,12 @@ BIG DATA/
 
 ## 4. Kết quả thực nghiệm (chạy thật 25M)
 
-- **RMSE = 0.7965 · MAE = 0.6187** (test 20% trên **25.000.095** ratings) — ngang/vượt benchmark MovieLens.
-- **400.000** gợi ý (20.000 user × Top-20), lọc phim ≥1.000 lượt (MIN_REC_RATINGS=1000) → gợi ý kinh điển.
-- ALS: `rank=64, maxIter=10, regParam=0.08, coldStartStrategy=drop`. Users ~162.541, phim 62.423.
-- **11.866 poster** TMDB; trending Wikimedia khớp ~**2 phim/phút** (thật).
-- Demo: `http://localhost:5000`. URL admin: HDFS :9870 · Spark :8080 · HBase :16010 · Airflow :8088 (admin/admin).
+* Mô hình đạt **RMSE = 0,7965** và **MAE = 0,6187** khi đánh giá trên **20% tập kiểm thử** với hơn **25 triệu lượt đánh giá (ratings)**, cho kết quả tương đương hoặc tốt hơn các benchmark phổ biến của MovieLens.
+* Hệ thống tạo khoảng **400.000 gợi ý phim** cho **20.000 người dùng** (mỗi người 20 gợi ý). Chỉ những bộ phim có từ **1.000 lượt đánh giá trở lên** (`MIN_REC_RATINGS = 1000`) mới được đề xuất để đảm bảo chất lượng và độ phổ biến.
+* Mô hình **ALS** được huấn luyện với các tham số **rank = 64**, **maxIter = 10**, **regParam = 0,08** và **coldStartStrategy = "drop"** trên tập dữ liệu gồm khoảng **162.541 người dùng** và **62.423 bộ phim**.
+* Hệ thống thu thập được **11.866 poster phim từ TMDB** và cập nhật danh sách phim thịnh hành từ **Wikimedia** với tốc độ khoảng **2 phim mỗi phút**, giúp dữ liệu luôn bám sát xu hướng thực tế.
+* Demo của hệ thống chạy tại **http://localhost:5000**. Các giao diện quản trị gồm: **HDFS (cổng 9870)**, **Spark (cổng 8080)**, **HBase (cổng 16010)** và **Airflow (cổng 8088, tài khoản `admin/admin`)**.
+
 
 
 
