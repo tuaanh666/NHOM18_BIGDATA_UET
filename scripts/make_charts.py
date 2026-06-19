@@ -1,11 +1,3 @@
-"""
-make_charts.py — Sinh biểu đồ minh họa cho báo cáo (lưu vào docs/images).
-  1. Phân bố điểm đánh giá (rating distribution)
-  2. Top thể loại phim theo số lượt đánh giá
-  3. Top phim phổ biến (weighted rating)
-
-Chỉ dùng pandas + matplotlib, đọc dữ liệu từ ratings.csv + SQLite demo DB.
-"""
 import os
 import sqlite3
 import pandas as pd
