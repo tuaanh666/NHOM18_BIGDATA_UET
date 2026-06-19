@@ -1,15 +1,14 @@
 """
 train_als.py — BATCH LAYER
-============================
-Huấn luyện mô hình gợi ý phim bằng thuật toán **ALS (Alternating Least Squares)**
+Huấn luyện mô hình gợi ý phim bằng thuật toán ALS (Alternating Least Squares)
 của Spark MLlib trên toàn bộ dữ liệu MovieLens 25M.
 
 Quy trình (tương ứng Batch Layer trong Lambda Architecture):
-  1. Đọc ratings + movies từ HDFS (Data Lake).
-  2. Chia train/test, huấn luyện ALS, đánh giá bằng RMSE.
-  3. Sinh Top-N gợi ý cho toàn bộ user  -> ghi vào MySQL (Batch View).
-  4. Tính thống kê phim (avg_rating, num_ratings) + phim phổ biến (cold-start).
-  5. Lưu mô hình + gợi ý ra HDFS (parquet) để dùng lại / phục vụ stream layer.
+   Đọc ratings + movies từ HDFS (Data Lake).
+   Chia train/test, huấn luyện ALS, đánh giá bằng RMSE.
+   Sinh Top-N gợi ý cho toàn bộ user  -> ghi vào MySQL (Batch View).
+   Tính thống kê phim (avg_rating, num_ratings) + phim phổ biến (cold-start).
+   Lưu mô hình + gợi ý ra HDFS (parquet) để dùng lại / phục vụ stream layer.
 
 Cấu hình qua biến môi trường (có default chạy local được ngay):
   SPARK_MASTER        (default local[*])
@@ -20,8 +19,6 @@ Cấu hình qua biến môi trường (có default chạy local được ngay):
 """
 import os
 import sys
-
-# Windows console mặc định cp1252 -> in tiếng Việt sẽ lỗi. Ép UTF-8.
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -32,24 +29,21 @@ from pyspark.sql import SparkSession, functions as F, Window
 from pyspark.ml.recommendation import ALS
 from pyspark.ml.evaluation import RegressionEvaluator
 
-# ----------------------------- Cấu hình --------------------------------------
 SPARK_MASTER = os.environ.get("SPARK_MASTER", "local[*]")
 RATINGS_PATH = os.environ.get("RATINGS_PATH", "./data/ml-25m/ratings.csv")
 MOVIES_PATH = os.environ.get("MOVIES_PATH", "./data/ml-25m/movies.csv")
 OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "./batch/output")
 
-MYSQL_URL = os.environ.get("MYSQL_URL", "")          # ưu tiên 1: ghi MySQL (Docker/Linux)
+MYSQL_URL = os.environ.get("MYSQL_URL", "")         
 MYSQL_USER = os.environ.get("MYSQL_USER", "mluser")
 MYSQL_PASSWORD = os.environ.get("MYSQL_PASSWORD", "mlpassword")
-# ưu tiên 2: ghi thẳng SQLite (local trên Windows, không cần winutils.exe)
 SQLITE_PATH = os.environ.get("SQLITE_PATH", "")
-SAVE_MODEL = os.environ.get("SAVE_MODEL", "0") == "1"  # model.save cần winutils trên Windows
+SAVE_MODEL = os.environ.get("SAVE_MODEL", "0") == "1"  
 
 RANK = int(os.environ.get("ALS_RANK", "64"))
 MAX_ITER = int(os.environ.get("ALS_MAX_ITER", "10"))
 REG_PARAM = float(os.environ.get("ALS_REG_PARAM", "0.08"))
 TOP_N = int(os.environ.get("ALS_TOP_N", "20"))
-# Số user tối đa sinh gợi ý batch (0 = tất cả). Giới hạn để demo nhanh nếu cần.
 MAX_USERS = int(os.environ.get("ALS_MAX_USERS", "0"))
 
 
@@ -61,7 +55,6 @@ def build_spark():
         .config("spark.driver.memory", os.environ.get("SPARK_DRIVER_MEM", "4g"))
     )
     if MYSQL_URL:
-        # tải driver MySQL từ Maven khi cần ghi JDBC
         builder = builder.config("spark.jars.packages", "com.mysql:mysql-connector-j:8.3.0")
     return builder.getOrCreate()
 
@@ -78,7 +71,6 @@ def write_table(df, table, mode="overwrite"):
             .mode(mode).save())
         print(f"[OK] Da ghi bang MySQL: {table}")
     elif SQLITE_PATH:
-        # collect ve pandas roi ghi SQLite (tranh winutils tren Windows)
         import sqlite3
         pdf = df.toPandas()
         con = sqlite3.connect(SQLITE_PATH)
@@ -114,7 +106,6 @@ def recommend_among_popular(spark, model, stats, ratings, min_ratings, max_users
     Trả về list các tuple (user_id, rank_pos, movie_id, score) — không cần pandas."""
     import numpy as np
 
-    # Phim đủ phổ biến + nhân tố ẩn của chúng
     elig = stats.filter(F.col("num_ratings") >= min_ratings).select("movieId")
     item_rows = (
         model.itemFactors.join(elig, model.itemFactors.id == elig.movieId)
@@ -123,7 +114,6 @@ def recommend_among_popular(spark, model, stats, ratings, min_ratings, max_users
     item_ids = np.array([r.id for r in item_rows], dtype=np.int64)
     V = np.array([r.features for r in item_rows], dtype=np.float32)  # (M, k)
 
-    # Nhân tố ẩn của tập user mẫu
     users = ratings.select("userId").distinct().limit(max_users).withColumnRenamed("userId", "id")
     user_rows = model.userFactors.join(users, "id").select("id", "features").collect()
     user_ids = np.array([r.id for r in user_rows], dtype=np.int64)
@@ -169,8 +159,6 @@ def main():
     spark = build_spark()
     spark.sparkContext.setLogLevel("WARN")
     print(f"[..] Spark master = {SPARK_MASTER}")
-
-    # ---------------- 1. Đọc dữ liệu ----------------
     ratings = (
         spark.read.csv(RATINGS_PATH, header=True, inferSchema=True)
         .select(
@@ -182,8 +170,6 @@ def main():
     movies = spark.read.csv(MOVIES_PATH, header=True, inferSchema=True)
     n_ratings = ratings.count()
     print(f"[OK] Đọc {n_ratings:,} ratings")
-
-    # ---------------- 2. Train/test split + ALS ----------------
     train, test = ratings.randomSplit([0.8, 0.2], seed=42)
     als = ALS(
         userCol="userId", itemCol="movieId", ratingCol="rating",
@@ -193,8 +179,6 @@ def main():
     )
     print(f"[..] Huấn luyện ALS (rank={RANK}, maxIter={MAX_ITER}, reg={REG_PARAM})")
     model = als.fit(train)
-
-    # ---------------- 3. Đánh giá RMSE ----------------
     preds = model.transform(test)
     rmse = RegressionEvaluator(
         metricName="rmse", labelCol="rating", predictionCol="prediction"
@@ -203,8 +187,6 @@ def main():
         metricName="mae", labelCol="rating", predictionCol="prediction"
     ).evaluate(preds)
     print(f"[KQ] RMSE = {rmse:.4f} | MAE = {mae:.4f}")
-
-    # ---------------- 4. Thống kê phim + phim phổ biến ----------------
     stats = ratings.groupBy("movieId").agg(
         F.avg("rating").alias("avg_rating"),
         F.count("rating").alias("num_ratings"),
@@ -220,10 +202,8 @@ def main():
         )
     )
     write_table(movies_enriched, "movies")
-
-    # Phim phổ biến — weighted rating (IMDB formula) để tránh phim ít lượt vote
     C = stats.agg(F.avg("avg_rating")).first()[0]
-    m = int(os.environ.get("POPULAR_MIN_RATINGS", "1000"))  # ngưỡng số lượt rating tối thiểu
+    m = int(os.environ.get("POPULAR_MIN_RATINGS", "1000")) 
     popular = (
         movies_enriched.filter(F.col("num_ratings") >= m)
         .withColumn(
@@ -239,20 +219,14 @@ def main():
         "rank_pos", "movie_id", "title", "avg_rating", "num_ratings"
     )
     write_table(popular_ranked, "popular_movies")
-
-    # ---------------- 5. Sinh Top-N gợi ý cho user ----------------
     min_rec_ratings = int(os.environ.get("MIN_REC_RATINGS", "0"))
 
     if min_rec_ratings > 0 and MAX_USERS > 0:
-        # Gợi ý CHỈ trong tập phim đủ phổ biến (>= ngưỡng lượt đánh giá), tính trực
-        # tiếp từ nhân tố ẩn ALS bằng numpy. Cách này đảm bảo mỗi user có đủ Top-N
-        # phim quen thuộc, tránh việc ALS xếp hạng cao các phim quá hiếm.
         recs_pdf = recommend_among_popular(
             spark, model, stats, ratings, min_rec_ratings, MAX_USERS, TOP_N
         )
         write_recommendations(spark, recs_pdf)
     else:
-        # Cách chuẩn của MLlib: lấy Top-N trong toàn bộ phim
         if MAX_USERS > 0:
             users = ratings.select("userId").distinct().limit(MAX_USERS)
             user_recs = model.recommendForUserSubset(users, TOP_N)
@@ -268,8 +242,6 @@ def main():
             )
         )
         write_table(exploded, "user_recommendations")
-
-    # ---------------- 6. Lưu thống kê tổng quan ----------------
     n_users = ratings.select("userId").distinct().count()
     n_movies = movies.count()
     stat_pairs = [
@@ -281,8 +253,6 @@ def main():
         ("als_rank", str(RANK)),
     ]
     write_stats(spark, stat_pairs)
-
-    # Lưu mô hình ALS (chỉ khi SAVE_MODEL=1 — trên Windows cần winutils.exe)
     if SAVE_MODEL:
         model_path = os.path.join(OUTPUT_DIR, "als_model")
         model.write().overwrite().save(model_path)
