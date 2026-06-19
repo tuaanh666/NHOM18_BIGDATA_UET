@@ -1,8 +1,8 @@
 """
 stream_producer.py — Giả lập luồng "rating mới" của người dùng, đẩy vào Kafka.
 
-Vai trò: tương đương Binance WebSocket trong bài mẫu. Ở đây ta phát lại
-(replay) các rating trong MovieLens như thể chúng đang xảy ra theo thời gian thực,
+Ở đây ta mô tả lại
+ các rating trong MovieLens như thể chúng đang xảy ra theo thời gian thực,
 mô phỏng người dùng liên tục đánh giá phim trên một nền tảng streaming.
 """
 import os
@@ -16,8 +16,8 @@ from kafka import KafkaProducer
 KAFKA_BROKER = os.environ.get("KAFKA_BROKER", "kafka:9092")
 TOPIC = os.environ.get("KAFKA_TOPIC_RATINGS", "ratings-stream")
 RATINGS_CSV = os.environ.get("RATINGS_CSV", "/app/data/ml-25m/ratings.csv")
-RATE_PER_SEC = float(os.environ.get("STREAM_RATE_PER_SEC", "5"))   # số rating/giây
-MAX_EVENTS = int(os.environ.get("STREAM_MAX_EVENTS", "0"))         # 0 = không giới hạn
+RATE_PER_SEC = float(os.environ.get("STREAM_RATE_PER_SEC", "5"))   
+MAX_EVENTS = int(os.environ.get("STREAM_MAX_EVENTS", "0"))       
 
 
 def create_producer(retries=30):
@@ -48,7 +48,6 @@ def stream():
     print(f"[..] Bắt đầu phát luồng rating -> topic '{TOPIC}' (~{RATE_PER_SEC}/giây)")
     with open(RATINGS_CSV, newline="") as f:
         reader = csv.DictReader(f)
-        # xáo trộn nhẹ bằng cách bỏ qua ngẫu nhiên để mô phỏng nhiều user khác nhau
         for row in reader:
             event = {
                 "userId": int(row["userId"]),
