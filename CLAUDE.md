@@ -1,24 +1,12 @@
-# CLAUDE.md — Tổng quan & ngữ cảnh dự án
-
-> **Mục đích:** Đọc DUY NHẤT file này là nắm toàn bộ dự án (không cần đọc hết source) để tiết kiệm token.
-> Nội dung chi tiết phục vụ viết báo cáo: xem `CLAUDE_báo_cáo.md`. Báo cáo: `docs/REPORT.tex` & `docs/REPORT.md`.
-> *Cập nhật lần cuối: 2026-06-16.*
-
----
+#  Tổng quan  dự án
 
 ## 1. Tổng quan dự án
 
 - **Tên đề tài:** Hệ thống gợi ý phim thời gian thực trên nền tảng dữ liệu lớn
-  *(Real-time Movie Recommendation System on Big Data Platform)*. Tên ngắn/web: **MovieRec**.
-- **Môn:** Kỹ thuật và Công nghệ Dữ liệu lớn — ĐH Công nghệ, Viện Trí tuệ Nhân tạo.
-- **GVHD:** TS. Trần Hồng Việt · ThS. Ngô Minh Hương · CN. Lương Sơn Bá. **Email mời GitHub:** thviet79@gmail.com.
 - **Use case:** Recommendation Engine (E-commerce / Media Streaming / Social Networks).
 - **Kiến trúc:** **Lambda Architecture** (Batch + Speed + Serving).
 - **Thuật toán cốt lõi:** **ALS** (Alternating Least Squares) — Collaborative Filtering, Spark MLlib.
 - **3 nguồn dữ liệu:** MovieLens 25M (lịch sử) · **Wikimedia EventStreams (real-time THẬT)** · TMDB (poster).
-- **Sản phẩm nộp:** Báo cáo (LaTeX) · Slide (LaTeX/Beamer, **chưa làm**) · Demo · GitHub repo (mời thầy).
-- **Mô phỏng bài mẫu** "Bitcoin Price Streaming Processing" (VNU-UET): cùng kiến trúc + stack, đổi sang bài toán phim.
-
 ---
 
 ## 2. Stack công nghệ
