@@ -1,20 +1,3 @@
-"""
-build_demo_db.py
-================
-Nạp kết quả Batch Layer (parquet do train_als.py sinh ra) vào CSDL mà Flask đọc.
-  - Local: SQLite (serving/recsys.db)  — chạy demo không cần Docker.
-  - Docker: MySQL (đặt DB_URL=mysql+pymysql://...).
-
-Ngoài ra tạo bảng `user_history` từ một mẫu ratings để demo hiển thị
-"phim user từng thích".
-
-Dùng:
-  python scripts/build_demo_db.py
-Env:
-  OUTPUT_DIR   (default ./batch/output)   — nơi chứa parquet
-  DB_URL       (default sqlite:///serving/recsys.db)
-  RATINGS_PATH (default ./data/ml-25m/ratings.csv) — để dựng user_history
-"""
 import os
 import glob
 import pandas as pd
@@ -44,8 +27,6 @@ def main():
         if df is not None:
             df.to_sql(tbl, engine, if_exists="replace", index=False)
             print(f"[OK] {tbl}: {len(df):,} dòng")
-
-    # user_history từ mẫu ratings (chỉ lấy các user có trong user_recommendations)
     recs = read_parquet_dir("user_recommendations")
     if recs is not None and os.path.exists(RATINGS_PATH):
         sample_users = set(recs["user_id"].unique()[:HISTORY_SAMPLE_USERS])
