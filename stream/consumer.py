@@ -1,17 +1,3 @@
-"""
-consumer.py — STREAM LAYER
-===========================
-Đọc luồng "rating mới" từ Kafka, cập nhật hồ sơ user theo thời gian thực và
-ghi gợi ý nhanh vào HBase (Real-time View của Lambda Architecture).
-
-Logic real-time (nhẹ, độ trễ thấp):
-  - Với mỗi rating mới của user, ta cập nhật danh sách thể loại (genre) ưa thích.
-  - Sinh gợi ý "tức thời" = các phim cùng thể loại ưa thích, điểm cao, user chưa xem.
-  - Ghi Top-N gợi ý real-time vào HBase, key = userId.
-
-Đây là tầng "tốc độ" (speed layer) bổ sung cho gợi ý batch (ALS) — phản ánh ngay
-sở thích vừa thay đổi của user mà không cần chờ train lại mô hình.
-"""
 import os
 import json
 import time
@@ -27,13 +13,11 @@ HBASE_TABLE = os.environ.get("HBASE_TABLE_RECS", "user_recommendations")
 MOVIES_CSV = os.environ.get("MOVIES_PATH", "/app/data/ml-25m/movies.csv")
 TOP_N = int(os.environ.get("ALS_TOP_N", "20"))
 
-# Trending real-time (nguồn LIVE từ Wikimedia): cửa sổ trượt các phim vừa được quan tâm
-TREND_WINDOW = int(os.environ.get("TREND_WINDOW_SEC", "21600"))   # 6 giờ
-TREND_TOP_N = int(os.environ.get("TREND_TOP_N", "40"))           # số phim thịnh hành giữ trong HBase
+TREND_WINDOW = int(os.environ.get("TREND_WINDOW_SEC", "21600"))  
+TREND_TOP_N = int(os.environ.get("TREND_TOP_N", "40"))           
 TREND_ROW = os.environ.get("HBASE_TRENDING_ROW", "__TRENDING__")
 trending_events = deque()   # (timestamp, movie_id, title)
 
-# Bộ nhớ tạm trong tiến trình: hồ sơ thể loại ưa thích & lịch sử đã xem của user
 user_genre_pref = defaultdict(lambda: defaultdict(float))
 user_seen = defaultdict(set)
 
@@ -41,7 +25,7 @@ user_seen = defaultdict(set)
 def load_movies():
     """Đọc metadata phim vào RAM: movie_id -> (title, set(genres), avg điểm giả lập)."""
     movies = {}
-    genre_index = defaultdict(list)  # genre -> [movie_id,...]
+    genre_index = defaultdict(list) 
     import csv
     if not os.path.exists(MOVIES_CSV):
         print(f"[!!] Không thấy {MOVIES_CSV}; stream layer chạy ở chế độ trống.")
@@ -81,7 +65,6 @@ def connect_hbase():
 
 
 def recommend_realtime(user_id, movies, genre_index):
-    """Sinh Top-N gợi ý real-time dựa trên thể loại ưa thích hiện tại của user."""
     prefs = user_genre_pref[user_id]
     if not prefs:
         return []
@@ -98,10 +81,6 @@ def recommend_realtime(user_id, movies, genre_index):
 
 
 def update_trending(ev, table):
-    """Sự kiện LIVE từ Wikipedia: cập nhật danh sách phim 'thịnh hành real-time' vào HBase.
-
-    Dùng cửa sổ trượt TREND_WINDOW: đếm số lần mỗi phim được nhắc tới gần đây,
-    xếp hạng và ghi Top-N vào HBase row đặc biệt (key = TREND_ROW)."""
     now = int(time.time())
     trending_events.append((now, ev["movieId"], ev.get("title", "")))
     while trending_events and now - trending_events[0][0] > TREND_WINDOW:
@@ -120,7 +99,7 @@ def update_trending(ev, table):
                 ).encode()
                 for i, (mid, sc) in enumerate(ranked)}
         data[b"rec:updated_at"] = str(now).encode()
-        table.delete(TREND_ROW.encode())          # xoá danh sách cũ tránh sót mục hết hạn
+        table.delete(TREND_ROW.encode())          
         table.put(TREND_ROW.encode(), data)
     return len(ranked)
 
@@ -152,8 +131,6 @@ def main():
     trended = 0
     for msg in consumer:
         ev = msg.value
-
-        # --- Nguồn REAL-TIME THẬT: sự kiện phim live từ Wikimedia EventStreams ---
         if ev.get("event_type") == "trending" or ev.get("source") == "wikipedia":
             n = update_trending(ev, table)
             trended += 1
@@ -161,10 +138,10 @@ def main():
                   f"-> trending now: {n} phim (tổng {trended} sự kiện)")
             continue
 
-        # --- Luồng rating (replay) -> gợi ý real-time theo thể loại cho từng user ---
+        #  Luồng rating (replay) gợi ý real-time theo thể loại cho từng user 
         uid, mid, rating = ev["userId"], ev["movieId"], ev["rating"]
         user_seen[uid].add(mid)
-        # cập nhật điểm ưa thích theo thể loại (rating >=3.5 mới tính là thích)
+        # cập nhật điểm ưa thích theo thể loại (rating >=3.5  là thích)
         if mid in movies and rating >= 3.5:
             for g in movies[mid]["genres"]:
                 user_genre_pref[uid][g] += (rating - 3.0)
