@@ -1,22 +1,12 @@
-# ============================================================
-#  run_local.ps1 — Chạy toàn bộ pipeline demo ở chế độ LOCAL
-#  (không cần Docker). Dành cho Windows + PowerShell.
-#
-#  Yêu cầu: Python 3.12, JDK 8 (Spark 3.5 chạy tốt với Java 8/11/17).
-#  Cách dùng:   .\scripts\run_local.ps1
-#               .\scripts\run_local.ps1 -Sample   # chạy nhanh trên mẫu 300k
-# ============================================================
 param(
-    [switch]$Sample,          # dùng mẫu nhỏ thay vì full 25M
-    [switch]$SkipTrain,       # bỏ qua train, chỉ chạy Flask
-    [int]$MaxUsers = 20000    # số user sinh gợi ý batch
+    [switch]$Sample,          
+    [switch]$SkipTrain,       
+    [int]$MaxUsers = 20000    
 )
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path $PSScriptRoot -Parent
 Set-Location $Root
-
-# --- Tìm JDK (ưu tiên JDK 8/11/17 cho Spark 3.5) ---
 $jdkCandidates = @(
     "C:\Program Files\Eclipse Adoptium\jdk-8.0.482.8-hotspot",
     "C:\Program Files\Eclipse Adoptium\jdk-17*",
@@ -28,13 +18,10 @@ foreach ($c in $jdkCandidates) {
 }
 Write-Host "JAVA_HOME = $env:JAVA_HOME" -ForegroundColor Cyan
 
-# --- Python thực (tránh Microsoft Store stub) ---
 $py = (Get-Command python).Source
 $env:PYSPARK_PYTHON = $py
 $env:PYSPARK_DRIVER_PYTHON = $py
 $env:PYTHONUTF8 = "1"
-
-# --- Cấu hình dữ liệu / output ---
 $db = "$Root\serving\recsys.db"
 $env:SQLITE_PATH = $db
 $env:MOVIES_PATH = "./data/ml-25m/movies.csv"
