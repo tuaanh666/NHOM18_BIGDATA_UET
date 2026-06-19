@@ -1,7 +1,5 @@
 """
 download_data.py — Tải và giải nén bộ dữ liệu MovieLens 25M.
-
-Tương ứng phần "Thu thập dữ liệu" trong bài toán: thay vì gọi Binance API,
 ta lấy dữ liệu rating phim từ GroupLens (MovieLens 25M).
 """
 import os
