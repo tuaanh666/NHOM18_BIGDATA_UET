@@ -21,7 +21,7 @@
 
 #  Kiến trúc hệ thống
 
-![Kiến trúc Lambda của hệ thống gợi ý phim](docs/architecture_lambda.png)
+![Kiến trúc Lambda của hệ thống gợi ý phim](docs/images/architecture_lambda.png)
 
 ## Batch Layer
 
