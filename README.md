@@ -79,7 +79,7 @@
 
 ## Hình ảnh demo
 
-**Gợi ý cá nhân hoá (ALS) cho người dùng:**
+**Gợi ý cá nhân hoá (ALS) cho người dùng ( đánh giá 5 sao 4 sao thì hệ thống sẽ cập nhập lại gợi ý phim):**
 
 ![Gợi ý cá nhân hoá](docs/images/result_recommend.png)
 
